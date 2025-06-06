@@ -274,7 +274,11 @@ async def analyze_road_marking_json(
 @app.get("/health")
 async def health_check():
     """Проверка здоровья сервиса"""
-    return {"status": "healthy", "model_loaded": model is not None}
+    return {
+        "status": "healthy" if model is not None else "unhealthy",
+        "model_loaded": model is not None,
+        "version": "1.0.0"
+    }
 
 @app.get("/")
 async def root():
@@ -289,6 +293,81 @@ async def root():
             "GET /": "Информация об API"
         }
     }
+
+@app.post("/analyze")
+async def analyze_for_go_service(
+    video: UploadFile = File(..., description="Видеофайл для анализа"),
+    startLat: float = Form(..., description="Широта начальной точки"),
+    startLon: float = Form(..., description="Долгота начальной точки"),
+    endLat: float = Form(..., description="Широта конечной точки"),
+    endLon: float = Form(..., description="Долгота конечной точки"),
+    segmentLength: int = Form(10, description="Длина сегмента в метрах")
+):
+    """
+    Анализирует видео дорожной разметки и возвращает результаты для Go сервиса
+    """
+    
+    print(f"Received file: {video.filename}, content_type: {video.content_type}")
+    
+    # Проверяем, что файл является видео
+    if not video.filename:
+        raise HTTPException(status_code=400, detail="Файл не выбран")
+        
+    # Сохраняем временный файл
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
+        try:
+            content = await video.read()
+            tmp_file.write(content)
+            tmp_video_path = tmp_file.name
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Ошибка при чтении файла: {str(e)}")
+    
+    try:
+        # Анализируем видео (только нейронная сеть, без географии)
+        cap = cv2.VideoCapture(tmp_video_path)
+        
+        frame_results = []
+        frame_count = 0
+        
+        while cap.isOpened():
+            success, frame = cap.read()
+            if not success:
+                break
+            
+            results = model(frame)
+            # Если есть хотя бы один detection — считаем, что разметка есть
+            has_marking = int(len(results[0].boxes) > 0)
+            frame_results.append(has_marking)
+            frame_count += 1
+        
+        cap.release()
+        
+        if frame_count == 0:
+            raise ValueError("Видео не содержит кадров или не может быть прочитано")
+        
+        print(f"Обработано кадров: {frame_count}")
+        
+        # Возвращаем результаты в формате, который ожидает Go сервис
+        return JSONResponse(content={
+            "status": "success",
+            "message": f"Успешно обработано {frame_count} кадров",
+            "frame_results": frame_results
+        })
+        
+    except Exception as e:
+        print(f"Ошибка при анализе видео: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Ошибка при анализе видео: {str(e)}",
+                "frame_results": []
+            }
+        )
+    finally:
+        # Удаляем временный файл
+        if os.path.exists(tmp_video_path):
+            os.unlink(tmp_video_path)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000) 
