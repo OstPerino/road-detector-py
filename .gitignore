@@ -1,0 +1,7 @@
+input
+output
+ai/input
+ai/output
+ai/best.pt
+ai/runs
+ai/runs/detect

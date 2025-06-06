@@ -1,0 +1,15 @@
+ultralytics
+opencv-python
+numpy
+matplotlib
+pillow
+pyyaml
+requests
+scipy
+torch
+torchvision
+tqdm
+psutil
+py-cpuinfo
+pandas
+seaborn 
