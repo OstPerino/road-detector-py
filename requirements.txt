@@ -12,4 +12,8 @@ tqdm
 psutil
 py-cpuinfo
 pandas
-seaborn 
+seaborn
+fastapi
+uvicorn[standard]
+python-multipart
+geopy 
